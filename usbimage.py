@@ -41,6 +41,7 @@ class USBImage:
 
     @staticmethod
     def mount():
+        os.makedirs(config.DATA_DIR, exist_ok=True)
         subprocess.run(
             ["mount", "-o", "loop", config.DATA_IMAGE, config.DATA_DIR], check=False
         )

@@ -13,10 +13,11 @@ app = Flask("ReceiveIt")
 
 @app.route("/upload", methods=["POST"])
 def upload():
+    os.makedirs(config.UPLOAD_DIR, exist_ok=True)
     files = request.files.getlist("file")
 
     for f in files:
-        path = f"{config.UPLOAD_DIR}/{f.filename}"
+        path = os.path.join(config.UPLOAD_DIR, f.filename)
         f.save(path)
 
     return "OK\n"
