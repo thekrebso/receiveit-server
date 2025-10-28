@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import time
 from flask import Flask, request
 import os
 import shutil
@@ -72,9 +73,11 @@ if __name__ == "__main__":
 
     if usbimage.USBImage.is_mounted():
         usbimage.USBImage.umount()
-        usbimage.USBImage.usb_attach()
 
-    if not usbimage.USBImage.is_usb_attached():
-        usbimage.USBImage.usb_attach()
+    if usbimage.USBImage.is_usb_attached():
+        usbimage.USBImage.usb_detach()
+
+    time.sleep(0.5)
+    usbimage.USBImage.usb_attach()
 
     app.run(host="0.0.0.0", port=80)
