@@ -52,6 +52,7 @@ class USBImage:
 
     @staticmethod
     def is_mounted():
+        os.makedirs(config.DATA_DIR, exist_ok=True)
         result = subprocess.run(
             ["mountpoint", "-q", config.DATA_DIR], check=False
         )
