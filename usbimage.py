@@ -2,9 +2,25 @@ import os
 import subprocess
 import config
 import shutil
+import time
 
 
 class USBImage:
+    @staticmethod
+    def is_ready():
+        if os.path.exists("/sys/class/udc") and os.listdir("/sys/class/udc"):
+            return True
+        return False
+
+    @staticmethod
+    def wait_until_ready(timeout=100):
+        for _ in range(timeout):
+            if USBImage.is_ready():
+                return True
+            time.sleep(0.1)
+        else:
+            raise TimeoutError("USB gadget not ready within timeout period")
+
     @staticmethod
     def image_create():
         if not os.path.exists(config.DATA_IMAGE):

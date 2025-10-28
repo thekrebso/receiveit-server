@@ -65,6 +65,8 @@ def index():
 
 
 if __name__ == "__main__":
+    usbimage.USBImage.wait_until_ready()
+
     if not usbimage.USBImage.image_exists():
         usbimage.USBImage.image_create()
 
