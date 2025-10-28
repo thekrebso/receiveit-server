@@ -34,12 +34,12 @@ class USBImage:
     @staticmethod
     def mount():
         subprocess.run(
-            ["sudo", "mount", "-o", "loop", config.DATA_IMAGE, config.DATA_DIR], check=False
+            ["mount", "-o", "loop", config.DATA_IMAGE, config.DATA_DIR], check=False
         )
 
     @staticmethod
     def umount():
-        subprocess.run(["sudo", "umount", config.DATA_DIR], check=False)
+        subprocess.run(["umount", config.DATA_DIR], check=False)
 
     @staticmethod
     def is_mounted():
@@ -52,7 +52,6 @@ class USBImage:
     def usb_attach():
         subprocess.run(
             [
-                "sudo",
                 "modprobe",
                 "g_mass_storage",
                 f"file={os.path.abspath(config.DATA_IMAGE)}",
@@ -64,7 +63,7 @@ class USBImage:
 
     @staticmethod
     def usb_detach():
-        subprocess.run(["sudo", "modprobe", "-r",
+        subprocess.run(["modprobe", "-r",
                        "g_mass_storage"], check=False)
 
     @staticmethod
