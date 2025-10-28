@@ -1,0 +1,16 @@
+[Unit]
+Description=ReceiveIt server
+After=systemd-udev-settle.service local-fs.target
+Requires=systemd-udev-settle.service local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/receiveit/receiveit-server/main.py
+WorkingDirectory=/home/receiveit/receiveit-server
+User=root
+Group=root
+Restart=always
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
