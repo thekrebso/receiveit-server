@@ -1,22 +1,30 @@
 import os
 import subprocess
 import config
+import shutil
 
 
 class USBImage:
     @staticmethod
     def image_create():
         if not os.path.exists(config.DATA_IMAGE):
-            subprocess.run(
-                [
-                    "dd",
-                    "if=/dev/zero",
-                    f"of={config.DATA_IMAGE}",
-                    "bs=1M",
-                    f"count={config.IMAGE_SIZE_MB}",
-                ],
-                check=True,
-            )
+            if shutil.which("fallocate"):
+                # try fast allocation first
+                subprocess.run(
+                    ["fallocate", "-l", f"{config.IMAGE_SIZE_MB}M", config.DATA_IMAGE], check=True
+                )
+            else:
+                # fallback to dd (slower but reliable)
+                subprocess.run(
+                    [
+                        "dd",
+                        "if=/dev/zero",
+                        f"of={config.DATA_IMAGE}",
+                        "bs=1M",
+                        f"count={config.IMAGE_SIZE_MB}",
+                    ],
+                    check=True,
+                )
             subprocess.run(
                 ["mkfs.vfat", config.DATA_IMAGE],
                 check=True,
