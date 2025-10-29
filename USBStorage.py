@@ -5,22 +5,7 @@ import shutil
 import time
 
 
-class USBImage:
-    @staticmethod
-    def is_ready():
-        if os.path.exists("/sys/class/udc") and os.listdir("/sys/class/udc"):
-            return True
-        return False
-
-    @staticmethod
-    def wait_until_ready(timeout=100):
-        for _ in range(timeout):
-            if USBImage.is_ready():
-                return True
-            time.sleep(0.1)
-        else:
-            raise TimeoutError("USB gadget not ready within timeout period")
-
+class USBStorage:
     @staticmethod
     def image_create():
         if os.path.exists(config.DATA_IMAGE):
@@ -109,37 +94,3 @@ class USBImage:
             ["mountpoint", "-q", config.DATA_DIR], check=False
         )
         return result.returncode == 0
-
-    @staticmethod
-    def usb_attach():
-        subprocess.run(
-            [
-                "modprobe",
-                "g_mass_storage",
-                f"file={os.path.abspath(config.DATA_IMAGE)}",
-                "removable=1",
-                "ro=0",
-            ],
-            check=False,
-        )
-
-    @staticmethod
-    def usb_detach():
-        subprocess.run(["modprobe", "-r",
-                       "g_mass_storage"], check=False)
-
-    @staticmethod
-    def is_usb_attached():
-        result = subprocess.run(
-            ["lsmod"], capture_output=True, text=True, check=False
-        )
-        return "g_mass_storage" in result.stdout
-
-    def __enter__(self):
-        self.usb_detach()
-        self.mount()
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.umount()
-        self.usb_attach()
-        return False
