@@ -119,5 +119,6 @@ def index():
 
 
 if __name__ == "__main__":
+    time.sleep(3)
     USBStorage.image_create()
     app.run(host="0.0.0.0", port=80)
