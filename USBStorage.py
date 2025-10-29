@@ -85,7 +85,27 @@ class USBStorage:
 
     @staticmethod
     def umount():
+        # try to unmount the filesystem
         subprocess.run(["umount", config.DATA_DIR], check=False)
+
+        # ensure any loop device backing the image is detached.
+        # losetup -j <file> prints matching loop devices like: /dev/loop0: [..]: /path/to/file
+        try:
+            if shutil.which("losetup"):
+                p = subprocess.run(
+                    ["losetup", "-j", config.DATA_IMAGE], capture_output=True, text=True)
+                out = p.stdout.strip()
+                for line in out.splitlines():
+                    # extract device path up to the colon
+                    dev = line.split(":", 1)[0].strip()
+                    if dev:
+                        subprocess.run(["losetup", "-d", dev], check=False)
+        except Exception:
+            # best-effort only
+            pass
+
+        # small delay to let kernel settle device nodes
+        time.sleep(0.05)
 
     @staticmethod
     def is_mounted():

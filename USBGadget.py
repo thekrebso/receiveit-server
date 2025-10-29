@@ -208,7 +208,14 @@ class USBGadget:
         USBGadget._ensure_dir(ms)
         # ensure lun directory and set backing file
         USBGadget._ensure_dir(os.path.join(ms, "lun.0"))
-        USBGadget._write(os.path.join(ms, "lun.0", "file"), os.path.abspath(config.DATA_IMAGE))
+        lun_file = os.path.join(ms, "lun.0", "file")
+        # try a few times to write the lun file in case the kernel/configfs is briefly busy
+        written = False
+        for _ in range(5):
+            if USBGadget._write(lun_file, os.path.abspath(config.DATA_IMAGE)):
+                written = True
+                break
+            time.sleep(0.05)
         try:
             USBGadget._write(os.path.join(ms, "lun.0", "removable"), "1")
         except Exception:
@@ -219,7 +226,9 @@ class USBGadget:
         try:
             if not os.path.exists(ms_link):
                 os.symlink(ms, ms_link)
-            return True
+                # small delay to allow host to notice the function (reduces race on re-enumeration)
+                time.sleep(0.05)
+            return written
         except Exception:
             return False
 
@@ -240,10 +249,11 @@ class USBGadget:
         funcs = os.path.join(config.GADGET_PATH, "functions")
         ms = os.path.join(funcs, "mass_storage.0")
         USBGadget._ensure_dir(os.path.join(ms, "lun.0"))
-        USBGadget._write(os.path.join(ms, "lun.0", "file"), os.path.abspath(new_image_path))
+        USBGadget._write(os.path.join(ms, "lun.0", "file"),
+                         os.path.abspath(new_image_path))
 
         # re-add mass storage to config
-        USBGadget.add_mass_storage()
-        # small delay for host to re-enumerate the mass storage function
-        time.sleep(0.1)
-        return True
+        # ensure write succeeded and give host a bit more time when replacing image
+        added = USBGadget.add_mass_storage()
+        time.sleep(0.15)
+        return added
