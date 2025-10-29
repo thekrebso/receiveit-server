@@ -121,4 +121,17 @@ def index():
 if __name__ == "__main__":
     time.sleep(3)
     USBStorage.image_create()
+
+    # try to initialize gadget early if configfs & UDC available. Non-fatal.
+    try:
+        if USBGadget.is_ready() and not USBGadget.is_initialized():
+            try:
+                USBGadget.init()
+                print("USBGadget initialized at startup")
+            except Exception as e:
+                print("USBGadget init failed at startup:", e)
+    except Exception:
+        # ignore readiness checks failing on platforms without configfs
+        pass
+
     app.run(host="0.0.0.0", port=80)
