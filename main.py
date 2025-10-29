@@ -6,7 +6,8 @@ import os
 import shutil
 import subprocess
 import config
-import usbimage
+from USBGadget import USBGadget
+from USBStorage import USBStorage
 
 
 app = Flask("ReceiveIt")
@@ -26,26 +27,71 @@ def upload():
 
 @app.route("/commit", methods=["POST"])
 def commit():
-    with usbimage.USBImage():
+    # detach only mass storage so serial (acm) remains active
+    if USBGadget.is_initialized():
+        USBGadget.remove_mass_storage()
+
+    # ensure backing image exists
+    USBStorage.image_create()
+
+    # mount image and copy uploaded files into it
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    USBStorage.mount()
+    try:
         for filename in os.listdir(config.UPLOAD_DIR):
             src_path = os.path.join(config.UPLOAD_DIR, filename)
             dst_path = os.path.join(config.DATA_DIR, filename)
-            shutil.copy2(src_path, dst_path)
-            os.remove(src_path)
+            try:
+                if os.path.isdir(src_path):
+                    # copy directory
+                    if os.path.exists(dst_path):
+                        shutil.rmtree(dst_path)
+                    shutil.copytree(src_path, dst_path)
+                else:
+                    shutil.copy2(src_path, dst_path)
+                os.remove(src_path)
+            except Exception:
+                # ignore individual file errors
+                pass
+    finally:
+        USBStorage.umount()
 
+    # update mass storage backing image in gadget (re-add mass storage)
+    if USBGadget.is_initialized():
+        USBGadget.add_mass_storage()
+    else:
+        # gadget not previously initialized; create full gadget (includes serial + ms)
+        USBGadget.init()
     return "OK\n"
 
 
 @app.route("/reload", methods=["POST"])
 def reload():
-    usbimage.USBImage.usb_detach()
-    usbimage.USBImage.usb_attach()
+    # detach only mass storage so serial (acm) remains active
+    if USBGadget.is_initialized():
+        USBGadget.remove_mass_storage()
+
+    # ensure backing image exists
+    USBStorage.image_create()
+
+    # re-add mass storage without touching serial
+    if USBGadget.is_initialized():
+        USBGadget.add_mass_storage()
+    else:
+        USBGadget.init()
+
     return "OK\n"
 
 
 @app.route("/clear", methods=["POST"])
 def clear():
-    with usbimage.USBImage():
+    # only remove mass storage so serial remains available
+    if USBGadget.is_initialized():
+        USBGadget.remove_mass_storage()
+
+    USBStorage.image_create()
+    USBStorage.mount()
+    try:
         for name in os.listdir(config.DATA_DIR):
             path = os.path.join(config.DATA_DIR, name)
             try:
@@ -54,8 +100,15 @@ def clear():
                 elif os.path.isdir(path):
                     shutil.rmtree(path)
             except Exception:
-                # ignore/remove failures; consider logging if needed
                 pass
+    finally:
+        USBStorage.umount()
+
+    # re-add mass storage without touching serial
+    if USBGadget.is_initialized():
+        USBGadget.add_mass_storage()
+    else:
+        USBGadget.init()
 
     return "OK\n"
 
@@ -66,18 +119,5 @@ def index():
 
 
 if __name__ == "__main__":
-    usbimage.USBImage.wait_until_ready()
-
-    if not usbimage.USBImage.image_exists():
-        usbimage.USBImage.image_create()
-
-    if usbimage.USBImage.is_mounted():
-        usbimage.USBImage.umount()
-
-    if usbimage.USBImage.is_usb_attached():
-        usbimage.USBImage.usb_detach()
-
-    time.sleep(0.5)
-    usbimage.USBImage.usb_attach()
-
+    USBStorage.image_create()
     app.run(host="0.0.0.0", port=80)
