@@ -79,9 +79,47 @@ class USBStorage:
     @staticmethod
     def mount():
         os.makedirs(config.DATA_DIR, exist_ok=True)
-        subprocess.run(
-            ["mount", "-o", "loop", config.DATA_IMAGE, config.DATA_DIR], check=False
-        )
+        # Prefer using losetup with partition scanning so we can mount the first
+        # partition if the image contains a partition table. Fall back to direct
+        # loop mount if losetup is not available or partition node not found.
+        if shutil.which("losetup"):
+            try:
+                loop = (
+                    subprocess.run(
+                        ["losetup", "-f", "--show", "-P", config.DATA_IMAGE],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                    .stdout.strip()
+                )
+            except Exception:
+                loop = None
+
+            if loop:
+                # partition node can be /dev/loopXp1 or /dev/loopX1
+                part1 = loop + \
+                    "p1" if os.path.exists(loop + "p1") else loop + "1"
+
+                # wait briefly for partition node
+                for _ in range(20):
+                    if os.path.exists(part1):
+                        break
+                    time.sleep(0.05)
+
+                if os.path.exists(part1):
+                    subprocess.run(
+                        ["mount", part1, config.DATA_DIR], check=False)
+                    return
+                else:
+                    # fall back to mounting the image directly
+                    subprocess.run(
+                        ["mount", "-o", "loop", config.DATA_IMAGE, config.DATA_DIR], check=False)
+                    return
+
+        # fallback when losetup not present
+        subprocess.run(["mount", "-o", "loop", config.DATA_IMAGE,
+                       config.DATA_DIR], check=False)
 
     @staticmethod
     def umount():
