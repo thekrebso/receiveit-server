@@ -10,6 +10,7 @@ PrivateDevices=no
 Type=simple
 ExecStart=/usr/bin/python3 /home/receiveit/receiveit-server/main.py
 WorkingDirectory=/home/receiveit/receiveit-server
+ExecStartPre=/sbin/modprobe libcomposite
 User=root
 Group=root
 Restart=always
