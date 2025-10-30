@@ -268,18 +268,46 @@ class USBGadget:
             # nothing to do — gadget not created
             return False
 
-        # remove ms from config so only ms is detached on host
-        USBGadget.remove_mass_storage()
+        # To avoid leaving the gadget in a partially-configured state, unbind the
+        # UDC (disconnect gadget from host), update the lun backing file, then
+        # rebind the same UDC. This gives a clean re-enumeration on the host.
+        udc_path = os.path.join(config.GADGET_PATH, "UDC")
+        try:
+            # read current UDC (may be empty)
+            try:
+                with open(udc_path, "r") as f:
+                    current_udc = f.read().strip()
+            except Exception:
+                current_udc = ""
 
-        # update backing file for lun
-        funcs = os.path.join(config.GADGET_PATH, "functions")
-        ms = os.path.join(funcs, "mass_storage.0")
-        USBGadget._ensure_dir(os.path.join(ms, "lun.0"))
-        USBGadget._write(os.path.join(ms, "lun.0", "file"),
-                         os.path.abspath(new_image_path))
+            # unbind gadget from UDC so host sees a clean disconnect
+            try:
+                USBGadget._write(udc_path, "")
+            except Exception:
+                pass
 
-        # re-add mass storage to config
-        # ensure write succeeded and give host a bit more time when replacing image
-        added = USBGadget.add_mass_storage()
-        time.sleep(0.15)
-        return added
+            # ensure mass_storage function exists and set new backing file
+            funcs = os.path.join(config.GADGET_PATH, "functions")
+            ms = os.path.join(funcs, "mass_storage.0")
+            USBGadget._ensure_dir(os.path.join(ms, "lun.0"))
+
+            lun_file = os.path.join(ms, "lun.0", "file")
+            written = False
+            for _ in range(8):
+                if USBGadget._write(lun_file, os.path.abspath(new_image_path)):
+                    written = True
+                    break
+                time.sleep(0.05)
+
+            # give kernel a moment
+            time.sleep(0.05)
+
+            # rebind UDC if we had one
+            if current_udc:
+                USBGadget._write(udc_path, current_udc)
+                # allow host to re-enumerate
+                time.sleep(0.15)
+
+            return written
+        except Exception:
+            return False

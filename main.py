@@ -58,7 +58,7 @@ def commit():
 
     # update mass storage backing image in gadget (re-add mass storage)
     if USBGadget.is_initialized():
-        USBGadget.add_mass_storage()
+        USBGadget.replace_mass_storage_image(config.DATA_IMAGE)
     else:
         # gadget not previously initialized; create full gadget (includes serial + ms)
         USBGadget.init()
@@ -76,7 +76,7 @@ def reload():
 
     # re-add mass storage without touching serial
     if USBGadget.is_initialized():
-        USBGadget.add_mass_storage()
+        USBGadget.replace_mass_storage_image(config.DATA_IMAGE)
     else:
         USBGadget.init()
 
@@ -106,7 +106,7 @@ def clear():
 
     # re-add mass storage without touching serial
     if USBGadget.is_initialized():
-        USBGadget.add_mass_storage()
+        USBGadget.replace_mass_storage_image(config.DATA_IMAGE)
     else:
         USBGadget.init()
 
