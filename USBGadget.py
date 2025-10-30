@@ -13,6 +13,11 @@ class USBGadget:
                 f.write(str(data))
             return True
         except Exception:
+            try:
+                # best-effort logging to stdout (captured by systemd journal)
+                print(f"USBGadget: failed to write {path} = {data}")
+            except Exception:
+                pass
             return False
 
     @staticmethod
@@ -120,6 +125,19 @@ class USBGadget:
             raise RuntimeError("no UDC available to bind gadget")
         udc = udc_list[0]
         USBGadget._write(os.path.join(config.GADGET_PATH, "UDC"), udc)
+
+        # diagnostic prints: show what got written/read back for vendor/product and UDC
+        try:
+            with open(os.path.join(config.GADGET_PATH, "idVendor"), "r") as f:
+                v = f.read().strip()
+            with open(os.path.join(config.GADGET_PATH, "idProduct"), "r") as f:
+                p = f.read().strip()
+            print(f"USBGadget: idVendor={v} idProduct={p} bound_UDC={udc}")
+        except Exception:
+            try:
+                print("USBGadget: unable to read back idVendor/idProduct after init")
+            except Exception:
+                pass
 
         # allow some time for host to enumerate
         time.sleep(0.1)
