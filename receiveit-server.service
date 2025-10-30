@@ -5,6 +5,7 @@ Requires=systemd-udev-settle.service local-fs.target
 
 [Service]
 ProtectKernelTunables=no
+ProtectSystem=off
 PrivateDevices=no
 Type=simple
 ExecStart=/usr/bin/python3 /home/receiveit/receiveit-server/main.py
