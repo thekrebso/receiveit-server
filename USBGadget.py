@@ -15,7 +15,9 @@ class USBGadget:
         except Exception:
             try:
                 # best-effort logging to stdout (captured by systemd journal)
+                import traceback
                 print(f"USBGadget: failed to write {path} = {data}")
+                traceback.print_exc()
             except Exception:
                 pass
             return False
@@ -26,6 +28,12 @@ class USBGadget:
             os.makedirs(path, exist_ok=True)
             return True
         except Exception:
+            try:
+                import traceback
+                print(f"USBGadget: failed to create directory {path}")
+                traceback.print_exc()
+            except Exception:
+                pass
             return False
 
     @staticmethod
