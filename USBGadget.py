@@ -304,7 +304,7 @@ class USBGadget:
                     time.sleep(0.05)
 
             # Give host a window to see media removal
-            time.sleep(0.2)
+            time.sleep(0.4)
 
             # Step 2: attach new image
             new_path = os.path.abspath(new_image_path)
@@ -322,7 +322,7 @@ class USBGadget:
                     attached = False
 
             # Nudge host
-            time.sleep(0.2)
+            time.sleep(1.4)
 
             # Fallback: if attach didn't stick, briefly unlink/relink function to force re-enum
             if not attached:
@@ -362,12 +362,23 @@ class USBGadget:
 
         try:
             USBGadget.add_mass_storage()
-            lun_file = os.path.join(
-                config.GADGET_PATH, "functions", "mass_storage.0", "lun.0", "file"
+            lun_dir = os.path.join(
+                config.GADGET_PATH, "functions", "mass_storage.0", "lun.0"
             )
+            lun_file = os.path.join(lun_dir, "file")
+            forced_eject_path = os.path.join(lun_dir, "forced_eject")
+
+            # Prefer forced_eject if supported
+            if os.path.exists(forced_eject_path):
+                for _ in range(5):
+                    if USBGadget._write(forced_eject_path, "1"):
+                        time.sleep(0.2)
+                        return True
+                    time.sleep(0.05)
+
             for _ in range(10):
                 if USBGadget._write(lun_file, ""):
-                    time.sleep(0.1)
+                    time.sleep(0.2)
                     return True
                 time.sleep(0.05)
             return False
