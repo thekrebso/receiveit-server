@@ -287,16 +287,24 @@ class USBGadget:
             USBGadget._ensure_dir(lun_dir)
             lun_file = os.path.join(lun_dir, "file")
 
-            # Step 1: detach current media by writing an empty string
+            # Step 1: forcibly eject current media if supported, otherwise clear file
             detached = False
-            for _ in range(10):
-                if USBGadget._write(lun_file, ""):
-                    detached = True
-                    break
-                time.sleep(0.05)
+            forced_eject_path = os.path.join(lun_dir, "forced_eject")
+            if os.path.exists(forced_eject_path):
+                for _ in range(5):
+                    if USBGadget._write(forced_eject_path, "1"):
+                        detached = True
+                        break
+                    time.sleep(0.05)
+            if not detached:
+                for _ in range(10):
+                    if USBGadget._write(lun_file, ""):
+                        detached = True
+                        break
+                    time.sleep(0.05)
 
-            # Give host a small window to see media removal
-            time.sleep(0.1)
+            # Give host a window to see media removal
+            time.sleep(0.2)
 
             # Step 2: attach new image
             new_path = os.path.abspath(new_image_path)
@@ -314,7 +322,30 @@ class USBGadget:
                     attached = False
 
             # Nudge host
-            time.sleep(0.1)
+            time.sleep(0.2)
+
+            # Fallback: if attach didn't stick, briefly unlink/relink function to force re-enum
+            if not attached:
+                cfg = os.path.join(config.GADGET_PATH, "configs", "c.1")
+                ms_link = os.path.join(cfg, "mass_storage.0")
+                try:
+                    if os.path.islink(ms_link) or os.path.exists(ms_link):
+                        os.unlink(ms_link)
+                    time.sleep(0.1)
+                except Exception:
+                    pass
+                # ensure file points to new image
+                USBGadget._write(lun_file, new_path)
+                try:
+                    if not os.path.exists(ms_link):
+                        os.symlink(ms, ms_link)
+                        time.sleep(0.2)
+                except Exception:
+                    pass
+                # final readback check
+                cur2 = (USBGadget._read(lun_file) or "").strip()
+                attached = (cur2 == new_path)
+
             return detached and attached
         except Exception:
             return False
