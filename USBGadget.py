@@ -322,7 +322,7 @@ class USBGadget:
                     attached = False
 
             # Nudge host
-            time.sleep(0.2)
+            time.sleep(1.4)
 
             # Always relink mass_storage to force host refresh (keeps ACM intact)
             cfg = os.path.join(config.GADGET_PATH, "configs", "c.1")
