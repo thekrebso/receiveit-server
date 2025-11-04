@@ -324,27 +324,27 @@ class USBGadget:
             # Nudge host
             time.sleep(1.4)
 
-            # Always relink mass_storage to force host refresh (keeps ACM intact)
-            cfg = os.path.join(config.GADGET_PATH, "configs", "c.1")
-            ms_link = os.path.join(cfg, "mass_storage.0")
-            try:
-                if os.path.islink(ms_link) or os.path.exists(ms_link):
-                    os.unlink(ms_link)
-                time.sleep(0.1)
-            except Exception:
-                pass
-            # ensure file points to new image
-            USBGadget._write(lun_file, new_path)
-            try:
-                if not os.path.exists(ms_link):
-                    os.symlink(ms, ms_link)
-                    time.sleep(0.3)
-            except Exception:
-                pass
-
-            # final readback check
-            cur2 = (USBGadget._read(lun_file) or "").strip()
-            attached = attached and (cur2 == new_path)
+            # Fallback: if attach didn't stick, briefly unlink/relink function to force re-enum
+            if not attached:
+                cfg = os.path.join(config.GADGET_PATH, "configs", "c.1")
+                ms_link = os.path.join(cfg, "mass_storage.0")
+                try:
+                    if os.path.islink(ms_link) or os.path.exists(ms_link):
+                        os.unlink(ms_link)
+                    time.sleep(0.1)
+                except Exception:
+                    pass
+                # ensure file points to new image
+                USBGadget._write(lun_file, new_path)
+                try:
+                    if not os.path.exists(ms_link):
+                        os.symlink(ms, ms_link)
+                        time.sleep(0.2)
+                except Exception:
+                    pass
+                # final readback check
+                cur2 = (USBGadget._read(lun_file) or "").strip()
+                attached = (cur2 == new_path)
 
             return detached and attached
         except Exception:
