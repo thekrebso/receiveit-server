@@ -122,11 +122,6 @@ class USBGadget:
             USBGadget._write(os.path.join(ms, "lun.0", "removable"), "1")
         except Exception:
             pass
-        # optional but recommended: allow stalls (improves host behavior)
-        try:
-            USBGadget._write(os.path.join(ms, "stall"), "1")
-        except Exception:
-            pass
 
         # link functions into config
         try:
