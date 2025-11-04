@@ -182,22 +182,13 @@ class USBStorage:
             part1 = loop + "p1" if os.path.exists(loop + "p1") else loop + "1"
             dev = part1 if os.path.exists(part1) else loop
 
-            # Try to set a new random serial (8 hex chars)
+            # Prefer changing the volume label first (works well on Windows)
             tried = False
-            if shutil.which("mlabel"):
-                try:
-                    serial = f"{int(time.time() * 1000) & 0xFFFFFFFF:08X}"
-                    subprocess.run(["mlabel", "-i", dev, "-N",
-                                   serial, "::"], check=False)
-                    tried = True
-                except Exception:
-                    pass
-
-            # Fallback: change the volume label
-            if not tried and shutil.which("fatlabel"):
+            if shutil.which("fatlabel"):
                 try:
                     label = f"RECEIVE{int(time.time()) % 100000:05d}"
-                    subprocess.run(["fatlabel", dev, label], check=False)
+                    subprocess.run(["fatlabel", dev, label], check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     tried = True
                 except Exception:
                     pass
@@ -205,7 +196,18 @@ class USBStorage:
             if not tried and shutil.which("dosfslabel"):
                 try:
                     label = f"RECEIVE{int(time.time()) % 100000:05d}"
-                    subprocess.run(["dosfslabel", dev, label], check=False)
+                    subprocess.run(["dosfslabel", dev, label], check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    tried = True
+                except Exception:
+                    pass
+
+            # As a last resort, try setting a new FAT serial via mtools
+            if not tried and shutil.which("mlabel"):
+                try:
+                    serial = f"{int(time.time() * 1000) & 0xFFFFFFFF:08X}"
+                    subprocess.run(["mlabel", "-i", dev, "-N", serial, "::"], check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except Exception:
                     pass
         finally:
