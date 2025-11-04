@@ -67,6 +67,11 @@ def commit():
                 subprocess.run(["sync"], check=False)
             except Exception:
                 pass
+        # tweak FAT volume metadata to prod Windows into re-caching
+        try:
+            USBStorage.bump_fat_volume_metadata()
+        except Exception:
+            pass
 
     # update mass storage media without touching serial function
     if USBGadget.is_initialized():
@@ -119,6 +124,10 @@ def clear():
                 subprocess.run(["sync"], check=False)
             except Exception:
                 pass
+        try:
+            USBStorage.bump_fat_volume_metadata()
+        except Exception:
+            pass
 
     # reattach media without touching serial
     if USBGadget.is_initialized():

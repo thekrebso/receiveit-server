@@ -152,3 +152,64 @@ class USBStorage:
             ["mountpoint", "-q", config.DATA_DIR], check=False
         )
         return result.returncode == 0
+
+    @staticmethod
+    def bump_fat_volume_metadata():
+        """
+        Best-effort: tweak FAT volume metadata to encourage host re-cache.
+        - Prefer setting a new FAT volume serial via mtools 'mlabel -N' if available.
+        - Otherwise, update the volume label via fatlabel/dosfslabel.
+        Works on the partition node if present (/dev/loopXp1 or /dev/loopX1),
+        falling back to the whole loop device. No-op on failure.
+        """
+        # Requires losetup to address partitioned images cleanly.
+        if not shutil.which("losetup"):
+            return
+
+        try:
+            loop = (
+                subprocess.run(
+                    ["losetup", "-f", "--show", "-P", config.DATA_IMAGE],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout.strip()
+            )
+        except Exception:
+            return
+
+        try:
+            part1 = loop + "p1" if os.path.exists(loop + "p1") else loop + "1"
+            dev = part1 if os.path.exists(part1) else loop
+
+            # Try to set a new random serial (8 hex chars)
+            tried = False
+            if shutil.which("mlabel"):
+                try:
+                    serial = f"{int(time.time() * 1000) & 0xFFFFFFFF:08X}"
+                    subprocess.run(["mlabel", "-i", dev, "-N",
+                                   serial, "::"], check=False)
+                    tried = True
+                except Exception:
+                    pass
+
+            # Fallback: change the volume label
+            if not tried and shutil.which("fatlabel"):
+                try:
+                    label = f"RECEIVE{int(time.time()) % 100000:05d}"
+                    subprocess.run(["fatlabel", dev, label], check=False)
+                    tried = True
+                except Exception:
+                    pass
+
+            if not tried and shutil.which("dosfslabel"):
+                try:
+                    label = f"RECEIVE{int(time.time()) % 100000:05d}"
+                    subprocess.run(["dosfslabel", dev, label], check=False)
+                except Exception:
+                    pass
+        finally:
+            try:
+                subprocess.run(["losetup", "-d", loop], check=False)
+            except Exception:
+                pass
