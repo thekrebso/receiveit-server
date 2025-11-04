@@ -23,6 +23,14 @@ class USBGadget:
             return False
 
     @staticmethod
+    def _read(path):
+        try:
+            with open(path, "r") as f:
+                return f.read()
+        except Exception:
+            return None
+
+    @staticmethod
     def _ensure_dir(path):
         try:
             os.makedirs(path, exist_ok=True)
@@ -261,51 +269,100 @@ class USBGadget:
     @staticmethod
     def replace_mass_storage_image(new_image_path):
         """
-        Replace mass storage backing image without touching other functions.
-        Unlink mass_storage from config, change lun.0/file, re-link.
+        Replace mass storage backing image without unbinding the gadget or
+        removing the function symlink. We "eject" by writing an empty string to
+        the lun.0/file, then point it to the new image path. This triggers a
+        media change on the host without dropping the CDC ACM interface.
         """
         if not USBGadget.is_initialized():
             # nothing to do — gadget not created
             return False
-
-        # Safer swap: unlink mass_storage from the active config (keeps other
-        # functions like acm.usb0 intact), update the lun backing file, then
-        # relink mass_storage. This avoids unbinding the entire gadget/UDC.
         try:
-            cfg = os.path.join(config.GADGET_PATH, "configs", "c.1")
-            ms_cfg_link = os.path.join(cfg, "mass_storage.0")
+            # Ensure the mass_storage function exists and is linked
+            USBGadget.add_mass_storage()
 
-            # remove ms from config so host detaches only mass storage
-            try:
-                if os.path.islink(ms_cfg_link) or os.path.exists(ms_cfg_link):
-                    os.unlink(ms_cfg_link)
-            except Exception:
-                pass
-
-            # ensure lun dir exists and update backing file
             funcs = os.path.join(config.GADGET_PATH, "functions")
             ms = os.path.join(funcs, "mass_storage.0")
-            USBGadget._ensure_dir(os.path.join(ms, "lun.0"))
-            lun_file = os.path.join(ms, "lun.0", "file")
+            lun_dir = os.path.join(ms, "lun.0")
+            USBGadget._ensure_dir(lun_dir)
+            lun_file = os.path.join(lun_dir, "file")
 
-            written = False
+            # Step 1: detach current media by writing an empty string
+            detached = False
             for _ in range(10):
-                if USBGadget._write(lun_file, os.path.abspath(new_image_path)):
-                    written = True
+                if USBGadget._write(lun_file, ""):
+                    detached = True
+                    break
+                time.sleep(0.05)
+
+            # Give host a small window to see media removal
+            time.sleep(0.1)
+
+            # Step 2: attach new image
+            new_path = os.path.abspath(new_image_path)
+            attached = False
+            for _ in range(10):
+                if USBGadget._write(lun_file, new_path):
+                    attached = True
                     break
                 time.sleep(0.1)
 
-            # small delay to let kernel settle before relinking
+            # Optional: verify write by reading back
+            if attached:
+                cur = (USBGadget._read(lun_file) or "").strip()
+                if cur != new_path:
+                    attached = False
+
+            # Nudge host
             time.sleep(0.1)
+            return detached and attached
+        except Exception:
+            return False
 
-            # relink mass_storage into the config
-            try:
-                if not os.path.exists(ms_cfg_link):
-                    os.symlink(ms, ms_cfg_link)
+    @staticmethod
+    def detach_mass_storage_media():
+        """
+        Temporarily detach the mass storage media by clearing lun.0/file.
+        Keeps the gadget and function active (e.g., ACM stays up), but the
+        host will see the storage removed. Use before updating the image.
+        """
+        if not USBGadget.is_initialized():
+            return False
+
+        try:
+            USBGadget.add_mass_storage()
+            lun_file = os.path.join(
+                config.GADGET_PATH, "functions", "mass_storage.0", "lun.0", "file"
+            )
+            for _ in range(10):
+                if USBGadget._write(lun_file, ""):
                     time.sleep(0.1)
-            except Exception:
-                pass
+                    return True
+                time.sleep(0.05)
+            return False
+        except Exception:
+            return False
 
-            return written
+    @staticmethod
+    def attach_mass_storage_media(image_path):
+        """
+        Attach the given image to the mass storage LUN (writes path to
+        lun.0/file). Triggers media insertion on the host.
+        """
+        if not USBGadget.is_initialized():
+            return False
+
+        try:
+            USBGadget.add_mass_storage()
+            lun_file = os.path.join(
+                config.GADGET_PATH, "functions", "mass_storage.0", "lun.0", "file"
+            )
+            new_path = os.path.abspath(image_path)
+            for _ in range(10):
+                if USBGadget._write(lun_file, new_path):
+                    time.sleep(0.1)
+                    return True
+                time.sleep(0.1)
+            return False
         except Exception:
             return False

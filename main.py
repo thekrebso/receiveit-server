@@ -27,10 +27,10 @@ def upload():
 
 @app.route("/commit", methods=["POST"])
 def commit():
-    # detach only mass storage so serial (acm) remains active
+    # If gadget is active, detach media first so the backing file isn't busy
     if USBGadget.is_initialized():
-        USBGadget.remove_mass_storage()
-
+        USBGadget.detach_mass_storage_media()
+        time.sleep(0.1)
     # ensure backing image exists
     USBStorage.image_create()
 
@@ -38,25 +38,37 @@ def commit():
     os.makedirs(config.DATA_DIR, exist_ok=True)
     USBStorage.mount()
     try:
-        for filename in os.listdir(config.UPLOAD_DIR):
-            src_path = os.path.join(config.UPLOAD_DIR, filename)
-            dst_path = os.path.join(config.DATA_DIR, filename)
-            try:
-                if os.path.isdir(src_path):
-                    # copy directory
-                    if os.path.exists(dst_path):
-                        shutil.rmtree(dst_path)
-                    shutil.copytree(src_path, dst_path)
-                else:
-                    shutil.copy2(src_path, dst_path)
-                os.remove(src_path)
-            except Exception:
-                # ignore individual file errors
-                pass
+        if not os.path.isdir(config.UPLOAD_DIR):
+            # nothing to commit
+            pass
+        else:
+            for filename in os.listdir(config.UPLOAD_DIR):
+                src_path = os.path.join(config.UPLOAD_DIR, filename)
+                dst_path = os.path.join(config.DATA_DIR, filename)
+                try:
+                    if os.path.isdir(src_path):
+                        # copy directory
+                        if os.path.exists(dst_path):
+                            shutil.rmtree(dst_path)
+                        shutil.copytree(src_path, dst_path)
+                    else:
+                        shutil.copy2(src_path, dst_path)
+                    os.remove(src_path)
+                except Exception:
+                    # ignore individual file errors
+                    pass
     finally:
         USBStorage.umount()
+        # ensure data is flushed to image
+        try:
+            os.sync()
+        except Exception:
+            try:
+                subprocess.run(["sync"], check=False)
+            except Exception:
+                pass
 
-    # update mass storage backing image in gadget (re-add mass storage)
+    # update mass storage media without touching serial function
     if USBGadget.is_initialized():
         USBGadget.replace_mass_storage_image(config.DATA_IMAGE)
     else:
@@ -67,14 +79,10 @@ def commit():
 
 @app.route("/reload", methods=["POST"])
 def reload():
-    # detach only mass storage so serial (acm) remains active
-    if USBGadget.is_initialized():
-        USBGadget.remove_mass_storage()
-
     # ensure backing image exists
     USBStorage.image_create()
 
-    # re-add mass storage without touching serial
+    # swap media without touching serial
     if USBGadget.is_initialized():
         USBGadget.replace_mass_storage_image(config.DATA_IMAGE)
     else:
@@ -85,9 +93,10 @@ def reload():
 
 @app.route("/clear", methods=["POST"])
 def clear():
-    # only remove mass storage so serial remains available
+    # Detach media first if gadget is active
     if USBGadget.is_initialized():
-        USBGadget.remove_mass_storage()
+        USBGadget.detach_mass_storage_media()
+        time.sleep(0.1)
 
     USBStorage.image_create()
     USBStorage.mount()
@@ -103,8 +112,15 @@ def clear():
                 pass
     finally:
         USBStorage.umount()
+        try:
+            os.sync()
+        except Exception:
+            try:
+                subprocess.run(["sync"], check=False)
+            except Exception:
+                pass
 
-    # re-add mass storage without touching serial
+    # reattach media without touching serial
     if USBGadget.is_initialized():
         USBGadget.replace_mass_storage_image(config.DATA_IMAGE)
     else:
