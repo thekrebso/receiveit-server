@@ -1,0 +1,11 @@
+[Unit]
+Description=Auto-restart P2P find
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/receiveit/receiveit-server/scripts/p2p-find.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
