@@ -1,0 +1,11 @@
+[Unit]
+Description=Auto-configure P2P interfaces
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/receiveit/receiveit-server/scripts/p2p-ifwatch.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
