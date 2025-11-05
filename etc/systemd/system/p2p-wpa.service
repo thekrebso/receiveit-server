@@ -1,0 +1,12 @@
+[Unit]
+Description=WPA Supplicant P2P (Wi-Fi Direct)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/wpa_supplicant -Dnl80211 -iwlan0 -c/etc/wpa_supplicant/p2p.conf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
