@@ -6,7 +6,7 @@ ConditionPathExists=/var/run/wpa_supplicant/p2p-dev-wlan0
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/wpa_cli -i p2p-dev-wlan0 -p /var/run/wpa_supplicant -a /home/receiveit/receiveit-server/scripts/p2p-event.sh -f /var/log/wpa_cli-p2p-events.log -t
+ExecStart=/usr/sbin/wpa_cli -i p2p-dev-wlan0 -p /var/run/wpa_supplicant -a /home/receiveit/receiveit-server/scripts/p2p-event.sh
 Restart=always
 RestartSec=2
 
