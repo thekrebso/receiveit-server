@@ -5,7 +5,7 @@ Requires=p2p-wpa.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/wpa_cli -i wlan0 -p /var/run/wpa_supplicant -a /home/receiveit/receiveit-server/scripts/p2p-event.sh
+ExecStart=/usr/sbin/wpa_cli -i wlan0 -p /var/run/wpa_supplicant -a /home/receiveit/receiveit-server/scripts/p2p-event.sh
 Restart=always
 RestartSec=2
 
