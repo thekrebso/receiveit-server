@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Robust P2P event handler invoked by wpa_cli (-a option).
-# Receives: <event> [args]
-# Logs events, auto-accepts P2P GO negotiation via WPS Push Button, assigns IP.
+# Typical invocation: script <iface> <event> [args]
+# Some guides show only CONNECTED/DISCONNECTED, but many builds pass other
+# events (e.g., P2P-*). We parse flexibly and log environment for clarity.
 
 LOG_FILE=/tmp/p2p-events.log
 STATE_FILE=/tmp/p2p-negotiating
@@ -14,10 +15,25 @@ log() {
 	echo "[$(timestamp)] [p2p-event] $*" | tee -a "$LOG_FILE"
 }
 
-EVENT="$1"
-shift || true
+dump_env() {
+	env | grep -E '^(WPA_|INTERFACE=|IFACE=)' | sort | tee -a "$LOG_FILE" >/dev/null
+}
 
-log "RAW: EVENT=$EVENT ARGS=$*"
+# Parse args. Commonly $1=iface, $2=event.
+IFACE="$1"; EVT="$2";
+case "$IFACE" in
+	wlan*|p2p-*|p2p-dev-*)
+		EVENT="$EVT"; shift 2 || true ;;
+	*)
+		# Fall back to treating $1 as event if iface not present
+		EVENT="$1"; shift 1 || true ;;
+esac
+
+log "ARGS: IFACE=${IFACE:-unknown} EVENT=${EVENT:-unknown} REM=$*"
+if [ -n "$WPA_EVENT" ]; then
+	log "ENV WPA_EVENT: $WPA_EVENT"
+fi
+dump_env
 
 # Auto-start WPS PBC when a negotiation request arrives
 if [ "$EVENT" = "P2P-GO-NEG-REQUEST" ]; then
