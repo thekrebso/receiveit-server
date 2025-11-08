@@ -1,6 +1,6 @@
 #!/bin/bash
 
-sudo systemctl stop p2p-ifwatch
-sudo systemctl stop p2p-find
-sudo systemctl stop p2p-wpa
-sudo systemctl start NetworkManager
+systemctl stop p2p-ifwatch.service
+systemctl stop p2p-find.service
+systemctl stop p2p-wpa.service
+systemctl start NetworkManager
