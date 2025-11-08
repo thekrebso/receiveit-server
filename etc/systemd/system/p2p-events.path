@@ -2,7 +2,7 @@
 Description=Start p2p-events when wpa_supplicant ctrl iface for wlan0 appears
 
 [Path]
-PathExists=/var/run/wpa_supplicant/wlan0
+PathExists=/var/run/wpa_supplicant/p2p-dev-wlan0
 Unit=p2p-events.service
 
 [Install]
