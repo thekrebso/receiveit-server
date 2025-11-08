@@ -1,6 +1,6 @@
 [Unit]
 Description=Wi-Fi Direct Autoconnect (listen for GO-NEG-REQUEST and start WPS-PBC)
-After=network.target p2p-wpa.service p2p-events.service
+After=network.target p2p-wpa.service
 Requires=p2p-wpa.service
 ConditionPathExists=/var/run/wpa_supplicant/p2p-dev-wlan0
 
