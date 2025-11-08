@@ -34,8 +34,8 @@ debounce() {
 
 log "Subscribing to wpa_cli events on $IFACE"
 
-# -w waits for ctrl iface, -s short output (no timestamps). stdbuf to flush line-by-line.
-stdbuf -oL /usr/sbin/wpa_cli -i "$IFACE" -p /var/run/wpa_supplicant -w -s | while read -r line; do
+# -s short output (no timestamps). stdbuf to flush line-by-line.
+stdbuf -oL /usr/sbin/wpa_cli -i "$IFACE" -p /var/run/wpa_supplicant -s | while read -r line; do
     mac="$(echo "$line" | grep -oE '([0-9a-f]{2}:){5}[0-9a-f]{2}')"
 
     if echo "$line" | grep -q "P2P-GO-NEG-REQUEST" && [ -n "$mac" ]; then
