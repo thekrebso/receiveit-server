@@ -2,6 +2,7 @@
 Description=WPA Supplicant Event Listener (Wi-Fi Direct)
 After=network.target p2p-wpa.service
 Requires=p2p-wpa.service
+ConditionPathExists=/var/run/wpa_supplicant/wlan0
 
 [Service]
 Type=simple
