@@ -1,20 +1,24 @@
 #!/bin/bash
 
+set -euo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-# Autoconnect helper: subscribes to wpa_cli event stream and triggers WPS-PBC
-# on P2P-GO-NEG-REQUEST events. This avoids unsupported flags and works with
-# wpa_cli v2.10 as shipped on Raspberry Pi OS.
+# Autoconnect helper (polling): periodically inspects P2P peers and initiates
+# WPS Push Button connection (p2p_connect ... pbc) when a peer advertises
+# dev_passwd_id=4 (WPS PBC) and GO negotiation has not yet been attempted.
+# Avoids reliance on wpa_cli action events which are limited on this build.
 
 LOG=/tmp/p2p-autoconnect.log
 IFACE=p2p-dev-wlan0
+SCAN_SERVICE=p2p-find.service
+POLL_INTERVAL=2
+DEBOUNCE_SECONDS=10
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] [p2p-autoconnect] $*" | tee -a "$LOG"; }
 
 touch "$LOG"
 
-# Simple debounce map using temp files in /tmp
 debounce_dir=/tmp/p2p-debounce
 mkdir -p "$debounce_dir"
 
@@ -32,32 +36,40 @@ debounce() {
     return 0
 }
 
-log "Subscribing to wpa_cli events on $IFACE"
+log "Starting polling loop on $IFACE (interval=${POLL_INTERVAL}s, debounce=${DEBOUNCE_SECONDS}s)"
 
-# -s short output (no timestamps). stdbuf to flush line-by-line.
-stdbuf -oL /usr/sbin/wpa_cli -i "$IFACE" -p /var/run/wpa_supplicant -s | while read -r line; do
-    mac="$(echo "$line" | grep -oE '([0-9a-f]{2}:){5}[0-9a-f]{2}')"
+while true; do
+    # List peers known to wpa_supplicant
+    peers=$(wpa_cli -i "$IFACE" p2p_peers 2>/dev/null || true)
+    if [ -z "$peers" ]; then
+        sleep "$POLL_INTERVAL"
+        continue
+    fi
 
-    if echo "$line" | grep -q "P2P-GO-NEG-REQUEST" && [ -n "$mac" ]; then
-        if debounce "neg-$mac" 5; then
-            log "Detected GO-NEG-REQUEST from $mac -> initiating WPS-PBC"
-            # Pause active scanning to avoid LISTEN/SCAN collisions during negotiation
-            systemctl stop p2p-find.service >/dev/null 2>&1 || true
-            /usr/sbin/wpa_cli -i "$IFACE" p2p_connect "$mac" pbc go_intent=15 >/dev/null 2>&1 \
-                && log "p2p_connect issued for $mac" \
-                || log "p2p_connect failed for $mac"
+    for peer in $peers; do
+        # Fetch detailed info
+        info=$(wpa_cli -i "$IFACE" p2p_peer "$peer" 2>/dev/null || true)
+        [ -z "$info" ] && continue
+
+        # Detect WPS PBC push button intent
+        if echo "$info" | grep -q 'dev_passwd_id=4'; then
+            if debounce "peer-$peer" "$DEBOUNCE_SECONDS"; then
+                log "Peer $peer advertising WPS PBC (dev_passwd_id=4); initiating GO negotiation"
+                # Pause background scanning to reduce LISTEN/SCAN collisions
+                systemctl stop "$SCAN_SERVICE" >/dev/null 2>&1 || true
+                if wpa_cli -i "$IFACE" p2p_connect "$peer" pbc go_intent=15 >/dev/null 2>&1; then
+                    log "p2p_connect issued for $peer"
+                else
+                    log "p2p_connect failed for $peer"
+                fi
+            fi
         fi
-        continue
+    done
+
+    # Resume scanner if no group exists
+    if ! ip -o link show | awk -F': ' '{print $2}' | grep -q '^p2p-wlan0'; then
+        systemctl start "$SCAN_SERVICE" >/dev/null 2>&1 || true
     fi
 
-    if echo "$line" | grep -q "P2P-GROUP-STARTED"; then
-        log "Group started ($line)"
-        continue
-    fi
-
-    if echo "$line" | grep -q "P2P-GROUP-REMOVED"; then
-        log "Group removed; resuming discovery"
-        systemctl start p2p-find.service >/dev/null 2>&1 || true
-        continue
-    fi
+    sleep "$POLL_INTERVAL"
 done
