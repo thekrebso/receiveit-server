@@ -2,11 +2,11 @@
 Description=WPA Supplicant Event Listener (Wi-Fi Direct)
 After=network.target p2p-wpa.service
 Requires=p2p-wpa.service
-ConditionPathExists=/var/run/wpa_supplicant/wlan0
+ConditionPathExists=/var/run/wpa_supplicant/p2p-dev-wlan0
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/wpa_cli -i wlan0 -p /var/run/wpa_supplicant -a /home/receiveit/receiveit-server/scripts/p2p-event.sh
+ExecStart=/usr/sbin/wpa_cli -i p2p-dev-wlan0 -p /var/run/wpa_supplicant -a /home/receiveit/receiveit-server/scripts/p2p-event.sh -f /var/log/wpa_cli-p2p-events.log -t
 Restart=always
 RestartSec=2
 
