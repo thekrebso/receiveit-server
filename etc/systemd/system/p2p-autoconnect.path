@@ -1,0 +1,9 @@
+[Unit]
+Description=Start p2p-autoconnect when wpa_supplicant ctrl iface for p2p-dev-wlan0 appears
+
+[Path]
+PathExists=/var/run/wpa_supplicant/p2p-dev-wlan0
+Unit=p2p-autoconnect.service
+
+[Install]
+WantedBy=multi-user.target
