@@ -13,6 +13,12 @@ SCAN_SERVICE=p2p-find.service
 POLL_INTERVAL=3
 DEBOUNCE_SECONDS=10
 
+# After group formation, we may need to reopen WPS or tear down idle group.
+GO_IFACE=""
+WPS_ACTIVE=0
+LAST_STA_TIME=0
+GROUP_IDLE_TIMEOUT=30  # seconds after last sta disconnect to remove group
+
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] [p2p-autoconnect] $*" | tee -a "$LOG"; }
 
@@ -59,15 +65,87 @@ event_listener() {
     journalctl -u "$WPA_UNIT" -f -n 0 | while read -r line; do
         # Extract MAC if present
         mac=$(echo "$line" | grep -oE '([0-9a-f]{2}:){5}[0-9a-f]{2}') || true
+
+        # Track group lifecycle
+        if echo "$line" | grep -q 'P2P-GROUP-STARTED'; then
+            # Example: P2P-GROUP-STARTED p2p-wlan0-0 GO ssid="DIRECT-xy" freq=2412 go_dev_addr=xx
+            GO_IFACE=$(echo "$line" | awk '{for (i=1;i<=NF;i++) if ($i ~ /^p2p-wlan0/) {print $i; break}}')
+            WPS_ACTIVE=0
+            log "Group started on $GO_IFACE"
+            continue
+        fi
+        if echo "$line" | grep -q 'P2P-GROUP-REMOVED'; then
+            log "Group removed detected; clearing state and resuming discovery"
+            GO_IFACE=""
+            WPS_ACTIVE=0
+            resume_scanner_if_idle
+            continue
+        fi
+        if echo "$line" | grep -q 'WPS-PBC-ACTIVE'; then
+            WPS_ACTIVE=1
+            log "WPS PBC active on $GO_IFACE"
+            continue
+        fi
+        if echo "$line" | grep -q 'WPS-PBC-DISABLE'; then
+            WPS_ACTIVE=0
+            log "WPS PBC disabled on $GO_IFACE"
+            continue
+        fi
+
+        # React to provisioning discovery requests when we have no group yet
+        if echo "$line" | grep -q 'P2P-PROV-DISC-PBC-REQ' && [ -n "${mac:-}" ]; then
+            if [ -z "$GO_IFACE" ]; then
+                if debounce "prov-disc-$mac" "$DEBOUNCE_SECONDS"; then
+                    log "PROV-DISC-PBC-REQ from $mac while no group -> initiating connect"
+                    connect_pbc "$mac"
+                fi
+            else
+                # Already a GO; optionally reopen WPS if STA list empty
+                sta_list=$(wpa_cli -i "$GO_IFACE" list_sta 2>/dev/null || true)
+                if [ -z "$sta_list" ] && [ $WPS_ACTIVE -eq 0 ]; then
+                    if debounce "reopen-wps" 20; then
+                        log "PROV-DISC received but group idle; reactivating WPS PBC"
+                        wpa_cli -i "$GO_IFACE" wps_pbc >/dev/null 2>&1 || true
+                    fi
+                fi
+            fi
+            continue
+        fi
+
         if echo "$line" | grep -q 'P2P-GO-NEG-REQUEST' && [ -n "${mac:-}" ]; then
             if debounce "go-neg-$mac" "$DEBOUNCE_SECONDS"; then
                 connect_pbc "$mac"
             fi
             continue
         fi
-        if echo "$line" | grep -q 'P2P-GROUP-REMOVED'; then
-            log "Group removed detected in journal; resuming discovery"
-            resume_scanner_if_idle
+
+        if echo "$line" | grep -q 'AP-STA-CONNECTED'; then
+            LAST_STA_TIME=$(date +%s)
+            log "Station connected (mac=$mac)"
+            continue
+        fi
+        if echo "$line" | grep -q 'AP-STA-DISCONNECTED'; then
+            LAST_STA_TIME=$(date +%s)
+            # Schedule idle check
+            (
+              sleep 5
+              if [ -n "$GO_IFACE" ]; then
+                  sta_list=$(wpa_cli -i "$GO_IFACE" list_sta 2>/dev/null || true)
+                  if [ -z "$sta_list" ]; then
+                      now=$(date +%s)
+                      if [ $((now - LAST_STA_TIME)) -ge $GROUP_IDLE_TIMEOUT ]; then
+                          log "Group $GO_IFACE idle -> removing to restart discovery"
+                          wpa_cli -i "$IFACE" p2p_group_remove "$GO_IFACE" >/dev/null 2>&1 || true
+                      else
+                          # Reopen WPS PBC for re-association attempt
+                          if [ $WPS_ACTIVE -eq 0 ]; then
+                              log "Group empty; reopening WPS PBC"
+                              wpa_cli -i "$GO_IFACE" wps_pbc >/dev/null 2>&1 || true
+                          fi
+                      fi
+                  fi
+              fi
+            ) &
             continue
         fi
     done
