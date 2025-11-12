@@ -1,0 +1,15 @@
+[Unit]
+Description=ReceiveIt BLE advertiser (non-connectable broadcast)
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/receiveit/receiveit-server/scripts/start-ble.sh
+ExecStop=/home/receiveit/receiveit-server/scripts/stop-ble.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
