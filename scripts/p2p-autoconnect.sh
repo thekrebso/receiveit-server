@@ -21,6 +21,13 @@ LAST_STA_TIME=0
 REMOVE_GO_ON_EMPTY=1
 GROUP_IDLE_TIMEOUT=30  # fallback seconds before removal if not removing immediately
 
+# --- IP + DHCP settings for P2P GO ---
+# The GO interface gets a static IP and we run a scoped dnsmasq for peers.
+IP_CIDR="192.168.49.1/24"
+DHCP_RANGE="192.168.49.50,192.168.49.150,12h"
+DNSMASQ_BIN="${DNSMASQ_BIN:-$(command -v dnsmasq || echo /usr/sbin/dnsmasq)}"
+DHCP_PID_DIR="/run"
+
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] [p2p-autoconnect] $*" | tee -a "$LOG"; }
 
@@ -41,6 +48,55 @@ debounce() {
     fi
     date +%s > "$file"
     return 0
+}
+
+# Configure GO interface IP (idempotent)
+configure_iface_ip() {
+    local ifc="$1"
+    ip link set "$ifc" up 2>/dev/null || true
+    if ! ip -4 addr show "$ifc" | grep -q "${IP_CIDR%/*}"; then
+        log "Assigning $IP_CIDR to $ifc"
+        ip addr add "$IP_CIDR" dev "$ifc" 2>/dev/null || true
+    fi
+}
+
+# Start dnsmasq for DHCP on GO interface (idempotent)
+start_dhcp() {
+    local ifc="$1"
+    local pidfile="$DHCP_PID_DIR/dnsmasq-p2p-${ifc}.pid"
+    [ -x "$DNSMASQ_BIN" ] || { log "dnsmasq not found; skipping DHCP"; return; }
+
+    # If already running, skip
+    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile" 2>/dev/null || echo 0)" 2>/dev/null; then
+        log "dnsmasq already running on $ifc (pid=$(cat "$pidfile"))"
+        return
+    fi
+
+    log "Starting dnsmasq on $ifc (range=$DHCP_RANGE)"
+    "$DNSMASQ_BIN" \
+        --no-hosts --no-resolv --port=0 \
+        --bind-interfaces --interface="$ifc" \
+        --dhcp-range="$DHCP_RANGE" --dhcp-authoritative \
+        --pid-file="$pidfile" \
+        >/dev/null 2>&1 || log "dnsmasq failed to start on $ifc"
+}
+
+# Stop dnsmasq for GO interface
+stop_dhcp() {
+    local ifc="$1"
+    local pidfile="$DHCP_PID_DIR/dnsmasq-p2p-${ifc}.pid"
+    if [ -f "$pidfile" ]; then
+        local pid="$(cat "$pidfile" 2>/dev/null || echo)"
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            log "Stopping dnsmasq on $ifc (pid=$pid)"
+            kill "$pid" 2>/dev/null || true
+            sleep 0.2
+        fi
+        rm -f "$pidfile"
+    else
+        # Best-effort fallback if pidfile missing
+        pkill -f "dnsmasq .*--interface=${ifc}" >/dev/null 2>&1 || true
+    fi
 }
 
 connect_pbc() {
@@ -81,10 +137,15 @@ event_listener() {
             GO_IFACE=$(echo "$line" | awk '{for (i=1;i<=NF;i++) if ($i ~ /^p2p-wlan0/) {print $i; break}}')
             WPS_ACTIVE=0
             log "Group started on $GO_IFACE"
+            configure_iface_ip "$GO_IFACE"
+            start_dhcp "$GO_IFACE"
             continue
         fi
         if echo "$line" | grep -q 'P2P-GROUP-REMOVED'; then
             log "Group removed detected; clearing state and resuming discovery"
+            if [ -n "$GO_IFACE" ]; then
+                stop_dhcp "$GO_IFACE"
+            fi
             GO_IFACE=""
             WPS_ACTIVE=0
             resume_scanner_if_idle
@@ -112,6 +173,7 @@ event_listener() {
                 # Already a GO
                 if [ $REMOVE_GO_ON_EMPTY -eq 1 ] && ! has_sta "$GO_IFACE"; then
                     log "PROV-DISC received; GO exists but empty -> removing group $GO_IFACE to restart negotiation"
+                    stop_dhcp "$GO_IFACE"
                     wpa_cli -i "$IFACE" p2p_group_remove "$GO_IFACE" >/dev/null 2>&1 || true
                     GO_IFACE=""
                     WPS_ACTIVE=0
@@ -149,6 +211,7 @@ event_listener() {
                   if ! has_sta "$GO_IFACE"; then
                       if [ $REMOVE_GO_ON_EMPTY -eq 1 ]; then
                           log "No stations remain on $GO_IFACE -> removing group immediately"
+                          stop_dhcp "$GO_IFACE"
                           wpa_cli -i "$IFACE" p2p_group_remove "$GO_IFACE" >/dev/null 2>&1 || true
                           GO_IFACE=""
                           WPS_ACTIVE=0
@@ -157,6 +220,7 @@ event_listener() {
                           now=$(date +%s)
                           if [ $((now - LAST_STA_TIME)) -ge $GROUP_IDLE_TIMEOUT ]; then
                               log "Group $GO_IFACE idle -> removing to restart discovery"
+                              stop_dhcp "$GO_IFACE"
                               wpa_cli -i "$IFACE" p2p_group_remove "$GO_IFACE" >/dev/null 2>&1 || true
                               GO_IFACE=""
                               WPS_ACTIVE=0
