@@ -1,7 +1,8 @@
 [Unit]
 Description=ReceiveIt server
-After=systemd-udev-settle.service local-fs.target
+After=systemd-udev-settle.service local-fs.target receiveit-ap.service
 Requires=systemd-udev-settle.service local-fs.target
+Wants=receiveit-ap.service
 
 [Service]
 ProtectKernelTunables=no

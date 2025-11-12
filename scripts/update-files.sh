@@ -1,6 +1,5 @@
 #!/bin/bash
 
-cd /home/receiveit/receiveit-server || exit 1
-cp ./etc/systemd/system/* /etc/systemd/system/
-cp ./etc/wpa_supplicant/* /etc/wpa_supplicant/
+cd /home/receiveit/receiveit-server
+cp -r ./etc/* /etc/
 cp ./boot/firmware/* /boot/firmware/

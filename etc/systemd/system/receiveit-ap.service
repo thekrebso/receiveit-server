@@ -1,0 +1,15 @@
+[Unit]
+Description=ReceiveIt Wi-Fi Access Point (hostapd + dnsmasq)
+After=systemd-udev-settle.service network-pre.target
+Wants=systemd-udev-settle.service
+Conflicts=NetworkManager.service wpa_supplicant.service
+
+[Service]
+Type=forking
+ExecStart=/home/receiveit/receiveit-server/scripts/start-ap.sh
+ExecStop=/home/receiveit/receiveit-server/scripts/stop-ap.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
