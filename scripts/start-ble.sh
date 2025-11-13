@@ -6,7 +6,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # and Service Data that includes the AP SSID from /etc/hostapd/hostapd.conf.
 
 HOSTAPD_CONF="/etc/hostapd/hostapd.conf"
-SERVICE_UUID="12345678-1234-5678-1234-56789abcdeff"
+SERVICE_UUID="139a34f3-f56a-46ea-ac7d-09bda997fa07"
 BTCTL=${BTCTL:-bluetoothctl}
 HCICONFIG=${HCICONFIG:-hciconfig}
 HCITOOL=${HCITOOL:-hcitool}
@@ -40,6 +40,7 @@ advertise_with_bluetoothctl() {
   # Use bluetoothctl's advertise menu. This persists in bluetoothd until disabled.
   $BTCTL <<EOF >/dev/null
 power on
+system-alias ${ssid}
 discoverable on
 discoverable-timeout 0
 menu advertise
