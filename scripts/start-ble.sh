@@ -8,6 +8,8 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 HOSTAPD_CONF="/etc/hostapd/hostapd.conf"
 SERVICE_UUID="139a34f3-f56a-46ea-ac7d-09bda997fa07"
 BTCTL=${BTCTL:-bluetoothctl}
+HCICONFIG=${HCICONFIG:-hciconfig}
+
 
 read_ssid() {
   local ssid
