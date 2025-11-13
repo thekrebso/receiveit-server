@@ -40,13 +40,16 @@ advertise_with_bluetoothctl() {
   # Use bluetoothctl's advertise menu. This persists in bluetoothd until disabled.
   $BTCTL <<EOF >/dev/null
 power on
+discoverable on
+discoverable-timeout 0
 menu advertise
 type broadcast
-uuids ${SERVICE_UUID}
+tx-power on
+local-name on
 clear
+uuids ${SERVICE_UUID}
 service ${SERVICE_UUID} ${payload_hex}
 back
-advertise off
 advertise on
 quit
 EOF
