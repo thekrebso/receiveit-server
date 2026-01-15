@@ -138,6 +138,46 @@ def clear():
     return "OK\n"
 
 
+def list_files_in_image():
+    # run fls -o 2048 data.img -u
+    try:
+        result = subprocess.run(
+            ["fls", "-o", "2048", config.DATA_IMAGE, "-u"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        files = []
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                filename = " ".join(parts[1:])
+                files.append(filename)
+        print("Files in image:", files)
+        return files
+    except Exception:
+        print("Failed to list files in image")
+        return []
+
+
+def list_files_in_upload():
+    if not os.path.exists(config.UPLOAD_DIR):
+        print("Upload directory does not exist")
+        return []
+    files = os.listdir(config.UPLOAD_DIR)
+    print("Files in upload:", files)
+    return files
+
+
+@app.route("/list", methods=["GET"])
+def list_files():
+    files_in_image = list_files_in_image()
+    files_in_upload = list_files_in_upload()
+    files = {"image": files_in_image, "upload": files_in_upload}
+    print("Listing files:", files)
+    return files
+
+
 @app.route("/", methods=["GET"])
 def index():
     return "Upload Server is running.\n"
