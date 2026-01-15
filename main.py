@@ -149,10 +149,32 @@ def list_files_in_image():
         )
         files = []
         for line in result.stdout.splitlines():
-            parts = line.split()
-            if len(parts) >= 2:
-                filename = " ".join(parts[1:])
-                files.append(filename)
+            if ":" not in line:
+                continue
+            pre, name = line.split(":", 1)
+            pre = pre.strip()
+            name = name.strip().strip('"')
+
+            # Skip deleted entries (fls marks deleted with '*')
+            if "*" in pre:
+                continue
+
+            # Only include regular files (type token starts with 'r')
+            type_token = pre.split()[0] if pre.split() else ""
+            if not type_token.startswith("r"):
+                continue
+
+            # Skip metadata and system entries
+            if not name:
+                continue
+            if name == "System Volume Information":
+                continue
+            if name.startswith("$"):
+                continue
+            if name in {"$MBR", "$FAT1", "$FAT2", "$OrphanFiles"}:
+                continue
+
+            files.append(name)
         print("Files in image:", files)
         return files
     except Exception:
