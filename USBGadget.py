@@ -304,7 +304,7 @@ class USBGadget:
                     time.sleep(0.05)
 
             # Give host a window to see media removal
-            time.sleep(0.4)
+            time.sleep(2)
 
             # Step 2: attach new image
             new_path = os.path.abspath(new_image_path)
@@ -322,7 +322,7 @@ class USBGadget:
                     attached = False
 
             # Nudge host
-            time.sleep(1.4)
+            time.sleep(2)
 
             # Fallback: if attach didn't stick, briefly unlink/relink function to force re-enum
             if not attached:
