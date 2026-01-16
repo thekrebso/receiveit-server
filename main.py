@@ -164,15 +164,32 @@ def list_files_in_image():
             if not type_token.startswith("r"):
                 continue
 
-            # Skip metadata and system entries by basename
+            # Skip metadata and system entries in any path component
             if not path:
                 continue
-            base = os.path.basename(path)
-            if base == "System Volume Information":
+            components = [c for c in path.strip("/").split("/") if c]
+            if any(c == "System Volume Information" for c in components):
                 continue
-            if base.startswith("$"):
+            if any(c.startswith("$") for c in components):
                 continue
-            if base in {"$MBR", "$FAT1", "$FAT2", "$OrphanFiles"}:
+            if any(c in {"$MBR", "$FAT1", "$FAT2", "$OrphanFiles"} for c in components):
+                continue
+            # Ignore common macOS metadata and resource fork files/directories
+            if any(
+                c in {
+                    ".DS_Store",
+                    ".Spotlight-V100",
+                    ".fseventsd",
+                    ".Trashes",
+                    ".TemporaryItems",
+                    ".AppleDouble",
+                    ".VolumeIcon.icns",
+                }
+                for c in components
+            ):
+                continue
+            # AppleDouble resource fork files alongside originals
+            if any(c.startswith("._") for c in components):
                 continue
 
             normalized = path.lstrip("/")
