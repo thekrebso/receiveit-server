@@ -142,7 +142,7 @@ def list_files_in_image():
     # run fls -o 2048 data.img -u
     try:
         result = subprocess.run(
-            ["fls", "-o", "2048", config.DATA_IMAGE, "-u"],
+            ["fls", "-o", "2048", "-u", "-r", "-p", config.DATA_IMAGE],
             capture_output=True,
             text=True,
             check=True,
@@ -151,9 +151,9 @@ def list_files_in_image():
         for line in result.stdout.splitlines():
             if ":" not in line:
                 continue
-            pre, name = line.split(":", 1)
+            pre, path = line.split(":", 1)
             pre = pre.strip()
-            name = name.strip().strip('"')
+            path = path.strip().strip('"')
 
             # Skip deleted entries (fls marks deleted with '*')
             if "*" in pre:
@@ -164,17 +164,20 @@ def list_files_in_image():
             if not type_token.startswith("r"):
                 continue
 
-            # Skip metadata and system entries
-            if not name:
+            # Skip metadata and system entries by basename
+            if not path:
                 continue
-            if name == "System Volume Information":
+            base = os.path.basename(path)
+            if base == "System Volume Information":
                 continue
-            if name.startswith("$"):
+            if base.startswith("$"):
                 continue
-            if name in {"$MBR", "$FAT1", "$FAT2", "$OrphanFiles"}:
+            if base in {"$MBR", "$FAT1", "$FAT2", "$OrphanFiles"}:
                 continue
 
-            files.append(name)
+            normalized = path.lstrip("/")
+            if normalized:
+                files.append(normalized)
         print("Files in image:", files)
         return files
     except Exception:
