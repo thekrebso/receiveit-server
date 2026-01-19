@@ -142,7 +142,7 @@ def list_files_in_image():
     # run fls -o 2048 data.img -u
     try:
         result = subprocess.run(
-            ["fls", "-o", "2048", "-u", "-r", "-p", config.DATA_IMAGE],
+            ["fls", "-o", "2048", "-u", "-p", config.DATA_IMAGE],
             capture_output=True,
             text=True,
             check=True,
