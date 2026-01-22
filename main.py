@@ -13,6 +13,122 @@ from USBStorage import USBStorage
 app = Flask("ReceiveIt")
 
 
+def _manifest_path():
+    return os.path.abspath(config.DELETE_MANIFEST)
+
+
+def _is_safe_relpath(p: str) -> bool:
+    if not p:
+        return False
+    # Normalize and ensure it's a relative path with no traversal
+    n = os.path.normpath(p).strip().lstrip("./")
+    if not n or n.startswith("/") or ".." in n.split(os.sep):
+        return False
+    return True
+
+
+def load_pending_deletions() -> set[str]:
+    try:
+        mp = _manifest_path()
+        if not os.path.exists(mp):
+            return set()
+        with open(mp, "r") as f:
+            paths = set()
+            for line in f:
+                s = line.strip()
+                if _is_safe_relpath(s):
+                    paths.add(s)
+            return paths
+    except Exception:
+        return set()
+
+
+def save_pending_deletions(paths: set[str]) -> None:
+    try:
+        mp = _manifest_path()
+        os.makedirs(os.path.dirname(mp), exist_ok=True)
+        with open(mp, "w") as f:
+            for p in sorted(paths):
+                f.write(p + "\n")
+    except Exception:
+        pass
+
+
+def add_pending_deletion(relpath: str) -> bool:
+    if not _is_safe_relpath(relpath):
+        return False
+    paths = load_pending_deletions()
+    paths.add(os.path.normpath(relpath).lstrip("./"))
+    save_pending_deletions(paths)
+    return True
+
+
+def remove_pending_deletion(relpath: str) -> bool:
+    if not _is_safe_relpath(relpath):
+        return False
+    paths = load_pending_deletions()
+    normalized = os.path.normpath(relpath).lstrip("./")
+    if normalized in paths:
+        paths.remove(normalized)
+        save_pending_deletions(paths)
+        return True
+    return False
+
+
+def apply_pending_deletions(mount_root: str) -> None:
+    paths = load_pending_deletions()
+    if not paths:
+        return
+    for rel in list(paths):
+        target = os.path.join(mount_root, rel)
+        try:
+            if os.path.islink(target) or os.path.isfile(target):
+                os.remove(target)
+            elif os.path.isdir(target):
+                shutil.rmtree(target)
+        except Exception:
+            # best-effort; leave entry for future commit if deletion failed
+            continue
+        # deletion succeeded; remove from manifest
+        paths.discard(rel)
+    save_pending_deletions(paths)
+
+
+@app.route("/delete", methods=["POST"])
+def delete():
+    # Delete from upload if present; otherwise mark for deletion from image
+    relpath = request.form.get("path") or (request.json or {}).get("path")
+    if not relpath or not _is_safe_relpath(relpath):
+        return "Invalid path\n", 400
+    relpath = os.path.normpath(relpath).lstrip("./")
+
+    upload_target = os.path.join(config.UPLOAD_DIR, relpath)
+    if os.path.exists(upload_target):
+        try:
+            if os.path.isfile(upload_target) or os.path.islink(upload_target):
+                os.remove(upload_target)
+            elif os.path.isdir(upload_target):
+                shutil.rmtree(upload_target)
+            return "OK\n"
+        except Exception:
+            return "Failed\n", 500
+
+    # Not in upload; mark for deletion from committed image
+    if add_pending_deletion(relpath):
+        return "OK\n"
+    return "Failed\n", 500
+
+
+@app.route("/undelete", methods=["POST"])
+def undelete():
+    relpath = request.form.get("path") or (request.json or {}).get("path")
+    if not relpath or not _is_safe_relpath(relpath):
+        return "Invalid path\n", 400
+    if remove_pending_deletion(relpath):
+        return "OK\n"
+    return "Not found\n", 404
+
+
 @app.route("/upload", methods=["POST"])
 def upload():
     os.makedirs(config.UPLOAD_DIR, exist_ok=True)
@@ -38,6 +154,8 @@ def commit():
     os.makedirs(config.DATA_DIR, exist_ok=True)
     USBStorage.mount()
     try:
+        apply_pending_deletions(config.DATA_DIR)
+
         if not os.path.isdir(config.UPLOAD_DIR):
             # nothing to commit
             pass
@@ -195,8 +313,12 @@ def list_files_in_image():
             normalized = path.lstrip("/")
             if normalized:
                 files.append(normalized)
-        print("Files in image:", files)
-        return files
+
+        # Apply marker "*" for pending deletions
+        pending = load_pending_deletions()
+        marked = [("*" + f) if f in pending else f for f in files]
+        print("Files in image:", marked)
+        return marked
     except Exception:
         print("Failed to list files in image")
         return []
@@ -207,6 +329,10 @@ def list_files_in_upload():
         print("Upload directory does not exist")
         return []
     files = os.listdir(config.UPLOAD_DIR)
+    # pending = load_pending_deletions()
+    # marked = [("*" + f) if f in pending else f for f in files]
+    # print("Files in upload:", marked)
+    # return marked
     print("Files in upload:", files)
     return files
 
