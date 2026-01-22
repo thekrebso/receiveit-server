@@ -122,6 +122,45 @@ class USBStorage:
                        config.DATA_DIR], check=False)
 
     @staticmethod
+    def mount_ro():
+        os.makedirs(config.DATA_DIR, exist_ok=True)
+        # Similar to mount(), but prefer read-only mounts to avoid write conflicts.
+        if shutil.which("losetup"):
+            try:
+                loop = (
+                    subprocess.run(
+                        ["losetup", "-f", "--show", "-P", config.DATA_IMAGE],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                    .stdout.strip()
+                )
+            except Exception:
+                loop = None
+
+            if loop:
+                part1 = loop + \
+                    "p1" if os.path.exists(loop + "p1") else loop + "1"
+
+                for _ in range(20):
+                    if os.path.exists(part1):
+                        break
+                    time.sleep(0.05)
+
+                if os.path.exists(part1):
+                    subprocess.run(["mount", "-o", "ro", part1,
+                                   config.DATA_DIR], check=False)
+                    return
+                else:
+                    subprocess.run(
+                        ["mount", "-o", "ro,loop", config.DATA_IMAGE, config.DATA_DIR], check=False)
+                    return
+
+        subprocess.run(["mount", "-o", "ro,loop",
+                       config.DATA_IMAGE, config.DATA_DIR], check=False)
+
+    @staticmethod
     def umount():
         # try to unmount the filesystem
         subprocess.run(["umount", config.DATA_DIR], check=False)

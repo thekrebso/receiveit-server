@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import time
-from flask import Flask, request
+from flask import Flask, request, send_file, send_from_directory, after_this_request
 import os
 import shutil
 import subprocess
@@ -344,6 +344,69 @@ def list_files():
     files = {"image": files_in_image, "upload": files_in_upload}
     print("Listing files:", files)
     return files
+
+
+@app.route("/download", methods=["GET"])
+def download():
+    source = request.args.get("source", "").strip().lower()
+    relpath = request.args.get("path", "")
+    if not relpath or not _is_safe_relpath(relpath):
+        return "Invalid path\n", 400
+    relpath = os.path.normpath(relpath).lstrip("./")
+
+    if source == "upload":
+        # Serve directly from upload directory
+        try:
+            return send_from_directory(config.UPLOAD_DIR, relpath, as_attachment=True)
+        except Exception:
+            return "Not found\n", 404
+
+    elif source == "image":
+        # Ensure backing image exists
+        USBStorage.image_create()
+
+        # Mount read-only to avoid conflicts with active gadget
+        mounted_here = False
+        try:
+            if not USBStorage.is_mounted():
+                USBStorage.mount_ro()
+                mounted_here = True
+
+            abs_path = os.path.join(config.DATA_DIR, relpath)
+
+            if not os.path.exists(abs_path) or not os.path.isfile(abs_path):
+                # If we mounted in this handler, unmount before returning
+                if mounted_here:
+                    USBStorage.umount()
+                return "Not found\n", 404
+
+            resp = send_file(abs_path, as_attachment=True)
+
+            # Ensure we unmount after the response is fully sent
+            if mounted_here:
+                try:
+                    resp.call_on_close(lambda: USBStorage.umount())
+                except Exception:
+                    # Fallback: schedule unmount best-effort after response creation
+                    @after_this_request
+                    def _cleanup(response):
+                        try:
+                            USBStorage.umount()
+                        except Exception:
+                            pass
+                        return response
+            return resp
+        except Exception:
+            # Best-effort cleanup if we mounted here
+            try:
+                if mounted_here:
+                    USBStorage.umount()
+            except Exception:
+                pass
+            return "Failed\n", 500
+
+    else:
+        return "Invalid source\n", 400
 
 
 @app.route("/", methods=["GET"])
