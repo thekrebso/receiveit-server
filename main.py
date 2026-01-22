@@ -98,9 +98,12 @@ def apply_pending_deletions(mount_root: str) -> None:
 def delete():
     # Delete from upload if present; otherwise mark for deletion from image
     relpath = request.form.get("path") or (request.json or {}).get("path")
+    print("DELETE request received", {"path": relpath})
     if not relpath or not _is_safe_relpath(relpath):
+        print("DELETE invalid path", relpath)
         return "Invalid path\n", 400
     relpath = os.path.normpath(relpath).lstrip("./")
+    print("DELETE normalized path", relpath)
 
     upload_target = os.path.join(config.UPLOAD_DIR, relpath)
     if os.path.exists(upload_target):
@@ -109,23 +112,33 @@ def delete():
                 os.remove(upload_target)
             elif os.path.isdir(upload_target):
                 shutil.rmtree(upload_target)
+            print("DELETE removed from upload", upload_target)
             return "OK\n"
-        except Exception:
+        except Exception as e:
+            print("DELETE failed removing from upload", {
+                  "target": upload_target, "error": str(e)})
             return "Failed\n", 500
 
     # Not in upload; mark for deletion from committed image
+    print("DELETE marking pending deletion", relpath)
     if add_pending_deletion(relpath):
+        print("DELETE marked pending", relpath)
         return "OK\n"
+    print("DELETE failed to mark pending", relpath)
     return "Failed\n", 500
 
 
 @app.route("/undelete", methods=["POST"])
 def undelete():
     relpath = request.form.get("path") or (request.json or {}).get("path")
+    print("UNDELETE request received", {"path": relpath})
     if not relpath or not _is_safe_relpath(relpath):
+        print("UNDELETE invalid path", relpath)
         return "Invalid path\n", 400
     if remove_pending_deletion(relpath):
+        print("UNDELETE removed from pending", relpath)
         return "OK\n"
+    print("UNDELETE not found in pending", relpath)
     return "Not found\n", 404
 
 
@@ -350,15 +363,20 @@ def list_files():
 def download():
     source = request.args.get("source", "").strip().lower()
     relpath = request.args.get("path", "")
+    print("DOWNLOAD request received", {"source": source, "path": relpath})
     if not relpath or not _is_safe_relpath(relpath):
+        print("DOWNLOAD invalid path", relpath)
         return "Invalid path\n", 400
     relpath = os.path.normpath(relpath).lstrip("./")
 
     if source == "upload":
         # Serve directly from upload directory
         try:
+            print("DOWNLOAD serving from upload", {"path": relpath})
             return send_from_directory(config.UPLOAD_DIR, relpath, as_attachment=True)
-        except Exception:
+        except Exception as e:
+            print("DOWNLOAD upload not found", {
+                  "path": relpath, "error": str(e)})
             return "Not found\n", 404
 
     elif source == "image":
@@ -371,6 +389,9 @@ def download():
             if not USBStorage.is_mounted():
                 USBStorage.mount_ro()
                 mounted_here = True
+                print("DOWNLOAD image mounted read-only")
+            else:
+                print("DOWNLOAD image already mounted")
 
             abs_path = os.path.join(config.DATA_DIR, relpath)
 
@@ -378,14 +399,18 @@ def download():
                 # If we mounted in this handler, unmount before returning
                 if mounted_here:
                     USBStorage.umount()
+                    print("DOWNLOAD image umounted after not found")
+                print("DOWNLOAD image path not found", abs_path)
                 return "Not found\n", 404
 
+            print("DOWNLOAD image sending file", abs_path)
             resp = send_file(abs_path, as_attachment=True)
 
             # Ensure we unmount after the response is fully sent
             if mounted_here:
                 try:
                     resp.call_on_close(lambda: USBStorage.umount())
+                    print("DOWNLOAD image scheduled umount via call_on_close")
                 except Exception:
                     # Fallback: schedule unmount best-effort after response creation
                     @after_this_request
@@ -394,18 +419,22 @@ def download():
                             USBStorage.umount()
                         except Exception:
                             pass
+                        print(
+                            "DOWNLOAD image scheduled umount via after_this_request")
                         return response
             return resp
-        except Exception:
+        except Exception as e:
             # Best-effort cleanup if we mounted here
             try:
                 if mounted_here:
                     USBStorage.umount()
             except Exception:
                 pass
+            print("DOWNLOAD image failed", {"path": relpath, "error": str(e)})
             return "Failed\n", 500
 
     else:
+        print("DOWNLOAD invalid source", source)
         return "Invalid source\n", 400
 
 
