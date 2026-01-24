@@ -16,7 +16,7 @@ read_ssid() {
   local ssid
   ssid=$(grep -E '^ssid=' "$HOSTAPD_CONF" 2>/dev/null | head -n1 | cut -d'=' -f2- | tr -d '\r\n') || true
   if [ -z "${ssid:-}" ]; then
-    ssid="WirelessPendrive_001"
+    ssid="Pendrive_001"
   fi
   printf '%s' "$ssid"
 }
